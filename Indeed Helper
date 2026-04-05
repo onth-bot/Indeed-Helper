@@ -59,14 +59,15 @@
         thresholds: { elite: 100, review: 70, maybe: 40 },
         timing: {
             clickActionDelay:   400,
-            unmountGrace:       350,
-            autoScreenNext:     1000,
+            unmountGrace:        80,
         },
         fiber: { maxDepth: 15, maxElements: 600 },
         candidateLoad: {
-            pollInterval: 120,
-            maxWait:      6000,
-            settleDelay:  250,
+            pollInterval:   80,
+            maxWait:      8000,
+            stabilityMs:   180,
+            stabilityPoll:  60,
+            stabilityMin:  200,
         },
     };
 
@@ -204,16 +205,44 @@
         return '';
     }
 
-    async function waitForNewCandidate(previousFingerprint) {
-        const { pollInterval, maxWait, settleDelay } = CONFIG.candidateLoad;
+    // Resolves as soon as the candidate container's text stops growing for
+    // stabilityMs in a row (meaning all content has rendered), with a hard
+    // safety ceiling of maxMs.  Returns true if stable, false on timeout.
+    function waitForContentStable() {
+        const { stabilityMs, stabilityPoll, stabilityMin, maxWait } = CONFIG.candidateLoad;
+        return new Promise(resolve => {
+            let lastLen = 0;
+            let stableAt = Date.now();
+            const deadline = Date.now() + maxWait;
+            const check = () => {
+                const container = $('#candidateProfileContainer');
+                const len = container ? (container.innerText || '').length : 0;
+                if (len !== lastLen) {
+                    lastLen = len;
+                    stableAt = Date.now();
+                }
+                if (len >= stabilityMin && Date.now() - stableAt >= stabilityMs) {
+                    return resolve(true);
+                }
+                if (Date.now() >= deadline) return resolve(len >= stabilityMin);
+                setTimeout(check, stabilityPoll);
+            };
+            check();
+        });
+    }
 
+    async function waitForNewCandidate(previousFingerprint) {
+        const { pollInterval, maxWait } = CONFIG.candidateLoad;
+
+        // Phase 1 — wait for the DOM fingerprint to change (old candidate gone)
         if (previousFingerprint) {
             await waitFor(() => {
                 const current = getCandidateFingerprint();
-                return current !== previousFingerprint;
+                return current && current !== previousFingerprint;
             }, { interval: pollInterval, timeout: maxWait / 2 });
         }
 
+        // Phase 2 — wait for React fiber to attach (page is mounting)
         const ready = await waitFor(() => {
             const container = $('#candidateProfileContainer');
             if (!container) return false;
@@ -236,8 +265,10 @@
             return text.length > 500;
         }, { interval: pollInterval, timeout: maxWait });
 
-        if (ready) await sleep(settleDelay);
-        return !!ready;
+        if (!ready) return false;
+
+        // Phase 3 — wait for content to fully stabilise (no fixed sleep)
+        return waitForContentStable();
     }
 
     // =====================================================================
@@ -1355,7 +1386,6 @@
             this.busy = true; this.setButtonsEnabled(false);
             this.diag.clear();
             this.setStatus('Re-analyzing…', 'loading');
-            await sleep(200);
 
             this.extractor = new Extractor(this.diag);
             this.extractor.extract();
