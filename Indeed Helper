@@ -57,6 +57,9 @@
             hsGrad2010to2013:       -20,
         },
         thresholds: { elite: 100, review: 70, maybe: 40 },
+        ui: {
+            subtitle: 'Amazon Delivery · Indeed',
+        },
         timing: {
             clickActionDelay:   400,
             unmountGrace:        80,
@@ -67,7 +70,7 @@
             maxWait:      8000,
             stabilityMs:   180,
             stabilityPoll:  60,
-            stabilityMin:  200,
+            stabilityMin:   80,
         },
     };
 
@@ -1210,7 +1213,7 @@
                     <div class="header-icon">🔍</div>
                     <div>
                         <div class="header-title">Resume Screener</div>
-                        <div class="header-sub">Amazon Delivery · Indeed</div>
+                        <div class="header-sub">${CONFIG.ui.subtitle}</div>
                     </div>
                 </div>
                 <span class="screener-badge">v9.1</span>
